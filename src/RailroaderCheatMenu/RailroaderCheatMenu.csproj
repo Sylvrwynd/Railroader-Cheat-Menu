@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>RailroaderCheatMenu</AssemblyName>
+    <RootNamespace>CAG.Sylvrwynd.RailroaderCheatMenu</RootNamespace>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <RailroaderManagedPath Condition="'$(RailroaderManagedPath)' == ''">$(MSBuildThisFileDirectory)..\..\references</RailroaderManagedPath>
+    <OutputPath Condition="'$(OutputPath)' == ''">$(MSBuildThisFileDirectory)..\..\dist\build\</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Railroader.Modding">
+      <HintPath>$(RailroaderManagedPath)\Railroader.Modding.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Railroader">
+      <HintPath>$(RailroaderManagedPath)\Railroader.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(RailroaderManagedPath)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(RailroaderManagedPath)\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(RailroaderManagedPath)\UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>
+
