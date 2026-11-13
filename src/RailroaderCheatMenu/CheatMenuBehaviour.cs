@@ -12,8 +12,6 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
 
         private IModLogger log;
         private bool open;
-        private bool teleportPending;
-        private bool teleportAwaitingRelease;
         private Rect window = new Rect(30f, 30f, 540f, 500f);
         private Vector2 scrollPosition;
         private int tab;
@@ -21,14 +19,29 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
         private string materialAmount = "1000000";
         private string fuelAmount = "1000000";
         private string reputationAmount = "100";
+        private string impactDamagePercent = "100";
+        private string overspeedDamagePercent = "100";
+        private string wearMultiplierPercent = "100";
+        private string oilUsePercent = "100";
+        private string fuelConsumptionPercent = "100";
+        private string highSpeedThresholdMph = "50";
         private int trackClass = 5;
         private string status = Localization.Text("ready");
+        private bool resizingWindow;
+        private Vector2 resizeStartMouse;
+        private Vector2 resizeStartSize;
+
+        private const float MinWindowWidth = 480f;
+        private const float MinWindowHeight = 320f;
+        private const float ResizeGripSize = 18f;
 
         private GUIStyle windowStyle;
         private GUIStyle buttonStyle;
         private GUIStyle tabStyle;
         private GUIStyle labelStyle;
         private GUIStyle textFieldStyle;
+        private GUIStyle closeButtonStyle;
+        private GUIStyle resizeGripStyle;
         private Texture2D windowBackground;
         private Texture2D controlBackground;
         private Texture2D controlHoverBackground;
@@ -53,26 +66,8 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
         {
             if (Input.GetKeyDown(KeyCode.F10))
             {
-                if (teleportPending)
-                {
-                    teleportPending = false;
-                    teleportAwaitingRelease = false;
-                    status = Localization.Text("teleport_cancelled");
-                }
                 open = !open;
             }
-
-            if (!teleportPending) return;
-            if (Input.GetMouseButton(0))
-            {
-                teleportAwaitingRelease = true;
-                return;
-            }
-
-            if (!teleportAwaitingRelease || !Input.GetMouseButtonDown(0)) return;
-            teleportPending = false;
-            teleportAwaitingRelease = false;
-            Run(GameActions.TeleportPlayerToCursor);
         }
 
         private void OnGUI()
@@ -93,7 +88,19 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
         {
             GUILayout.BeginVertical();
             scrollPosition = GUILayout.BeginScrollView(scrollPosition);
+            GUILayout.BeginHorizontal();
             GUILayout.Label(Localization.Text("target"), labelStyle);
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button(
+                Localization.Text("language") + ": " + Localization.LanguageName,
+                buttonStyle,
+                GUILayout.Width(145f),
+                GUILayout.Height(24f)))
+            {
+                Localization.Toggle();
+                status = Localization.Text("ready");
+            }
+            GUILayout.EndHorizontal();
             GUILayout.Label(GameActions.HostStatus(), labelStyle);
             GUILayout.Label(status, labelStyle);
             GUILayout.Space(5f);
@@ -107,13 +114,6 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
             GUILayout.EndHorizontal();
             GUILayout.Space(5f);
 
-            if (ActionButton(Localization.Text("language") + ": " + Localization.LanguageName, 24f))
-            {
-                Localization.Toggle();
-                status = Localization.Text("ready");
-            }
-            GUILayout.Space(6f);
-
             if (tab == 0) DrawCompanyTab();
             else if (tab == 1) DrawEquipmentTab();
             else if (tab == 2) DrawTrackTab();
@@ -124,7 +124,14 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
             if (ActionButton(Localization.Text("close"), 25f)) open = false;
             GUILayout.EndScrollView();
             GUILayout.EndVertical();
-            GUI.DragWindow(new Rect(0f, 0f, 10000f, 24f));
+
+            if (GUI.Button(new Rect(window.width - 28f, 2f, 24f, 20f), "X", closeButtonStyle))
+            {
+                open = false;
+            }
+
+            DrawResizeGrip();
+            GUI.DragWindow(new Rect(0f, 0f, Mathf.Max(0f, window.width - 32f), 24f));
         }
 
         private void DrawCompanyTab()
@@ -141,7 +148,7 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
             GUILayout.Space(8f);
             GUILayout.Label(Localization.Text("company_reputation"), labelStyle);
             reputationAmount = GUILayout.TextField(reputationAmount, textFieldStyle, GUILayout.Height(23f));
-            if (ActionButton(Localization.Format("set_reputation", reputationAmount)))
+            if (ActionButton(Localization.Text("action_set")))
             {
                 Run(() => GameActions.SetReputationPercent(ParseFloat(reputationAmount)));
             }
@@ -151,17 +158,37 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
         private void DrawEquipmentTab()
         {
             GUILayout.Label(Localization.Text("equipment_repair"), labelStyle);
-            DrawActionPair("repair_selected", GameActions.RepairSelected, "repair_all", GameActions.RepairAll);
+            DrawActionPair(
+                "repair_selected", "action_repair", GameActions.RepairSelected,
+                "repair_all", "action_repair_all", GameActions.RepairAll);
             GUILayout.Label(Localization.Text("repair_description"), labelStyle);
 
             GUILayout.Space(7f);
             GUILayout.Label(Localization.Text("engine_fueling"), labelStyle);
-            DrawActionPair("refuel_selected", GameActions.RefuelSelected, "refuel_all", GameActions.RefuelAll);
+            DrawActionPair(
+                "refuel_selected", "action_refuel", GameActions.RefuelSelected,
+                "refuel_all", "action_refuel_all", GameActions.RefuelAll);
             GUILayout.Label(Localization.Text("fuel_description"), labelStyle);
 
             GUILayout.Space(7f);
+            GUILayout.Label(Localization.Text("cargo_loading"), labelStyle);
+            DrawActionPair(
+                "fill_manifested_selected", "action_fill", GameActions.FillManifestedSelected,
+                "fill_manifested_all", "action_fill", GameActions.FillManifestedAll);
+            GUILayout.Label(Localization.Text("manifested_cargo_description"), labelStyle);
+
+            GUILayout.Space(7f);
+            GUILayout.Label(Localization.Text("cargo_emptying"), labelStyle);
+            DrawActionPair(
+                "empty_selected_cargo", "action_empty", GameActions.EmptySelectedCargo,
+                "empty_all_cargo", "action_empty", GameActions.EmptyAllCargo);
+            GUILayout.Label(Localization.Text("empty_cargo_description"), labelStyle);
+
+            GUILayout.Space(7f);
             GUILayout.Label(Localization.Text("oiling"), labelStyle);
-            DrawActionPair("oil_selected", GameActions.OilSelected, "oil_all", GameActions.OilAll);
+            DrawActionPair(
+                "oil_selected", "action_oil", GameActions.OilSelected,
+                "oil_all", "action_oil_all", GameActions.OilAll);
             GUILayout.Label(Localization.Text("oil_description"), labelStyle);
         }
 
@@ -175,36 +202,99 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
             }
             GUILayout.EndHorizontal();
             DrawActionPair(
-                "repair_track",
-                GameActions.RepairAllTrack,
-                "set_track_class",
-                () => GameActions.SetAllTrackConditionClass(trackClass),
+                "repair_track", "action_repair", GameActions.RepairAllTrack,
+                "set_track_class", "action_set", () => GameActions.SetAllTrackConditionClass(trackClass),
                 null,
                 Localization.Format("set_track_class", trackClass));
 
             GUILayout.Space(7f);
             GUILayout.Label(Localization.Text("mow_yard_materials"), labelStyle);
-            DrawAmountAction(ref materialAmount, "restock_yards", () => GameActions.RestockMowMaterials(ParseFloat(materialAmount)));
+            DrawAmountActions(
+                ref materialAmount,
+                "action_fill",
+                () => GameActions.RestockMowMaterials(ParseFloat(materialAmount)),
+                "action_empty",
+                GameActions.ClearMowMaterials);
             GUILayout.Label(Localization.Text("materials"), labelStyle);
 
             GUILayout.Space(7f);
             GUILayout.Label(Localization.Text("yard_fuel_supplies"), labelStyle);
-            DrawAmountAction(ref fuelAmount, "restock_fuel_yards", () => GameActions.RestockFuelSupplies(ParseFloat(fuelAmount)));
+            DrawAmountActions(
+                ref fuelAmount,
+                "action_fill",
+                () => GameActions.RestockFuelSupplies(ParseFloat(fuelAmount)),
+                "action_empty",
+                GameActions.ClearFuelSupplies);
             GUILayout.Label(Localization.Text("fuel_materials"), labelStyle);
         }
 
         private void DrawSafetyTab()
         {
             GUILayout.Label(Localization.Text("derailment_tools"), labelStyle);
-            if (ActionButton(Localization.Text("rerail_all"), 25f)) Run(GameActions.RerailAll);
-            DrawActionPair(
-                "derailment_toggle",
+            if (ActionButton(Localization.Text("action_rerail"), 23f)) Run(GameActions.RerailAll);
+            DrawStatePair(
+                Localization.Text("derailment_toggle"),
                 GameActions.ToggleDerailmentProtection,
-                "speed_damage_toggle",
+                RuntimePatches.PreventDerailment,
+                Localization.Format("speed_damage_toggle", GameActions.CurrentHighSpeedDamageThreshold()),
                 GameActions.ToggleHighSpeedDamageProtection,
-                RuntimePatches.PreventDerailment ? Localization.Text("enabled") : Localization.Text("disabled"),
-                RuntimePatches.ProtectHighSpeedDamage ? Localization.Text("enabled") : Localization.Text("disabled"));
-            GUILayout.Label(Localization.Text("physics_description"), labelStyle);
+                RuntimePatches.ProtectHighSpeedDamage);
+            GUILayout.Label(
+                Localization.Format("physics_description", GameActions.CurrentHighSpeedDamageThreshold()),
+                labelStyle);
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(Localization.Text("speed_damage_threshold"), labelStyle, GUILayout.Width(185f));
+            highSpeedThresholdMph = GUILayout.TextField(highSpeedThresholdMph, textFieldStyle, GUILayout.Width(75f), GUILayout.Height(23f));
+            var enteredThreshold = highSpeedThresholdMph;
+            if (ActionButton(Localization.Text("apply")))
+            {
+                Run(() => GameActions.SetHighSpeedDamageThreshold(ParseFloat(enteredThreshold)));
+            }
+            GUILayout.EndHorizontal();
+            GUILayout.Label(
+                Localization.Format("current_speed_threshold", GameActions.CurrentHighSpeedDamageThreshold()),
+                labelStyle);
+
+            GUILayout.Space(7f);
+            GUILayout.Label(Localization.Text("wear_tools"), labelStyle);
+            DrawStatePair(
+                Localization.Text("equipment_wear_toggle"),
+                GameActions.ToggleEquipmentWear,
+                GameActions.EquipmentWearStatus() == Localization.Text("enabled"),
+                Localization.Text("oil_feature_toggle"),
+                GameActions.ToggleHotboxesAndOiling,
+                GameActions.HotboxesAndOilingStatus() == Localization.Text("enabled"));
+            GUILayout.Label(Localization.Text("wear_description"), labelStyle);
+
+            GUILayout.Space(7f);
+            GUILayout.Label(Localization.Text("damage_tuning"), labelStyle);
+            DrawMultiplierControl(
+                ref impactDamagePercent,
+                "impact_damage_multiplier",
+                GameActions.SetImpactDamagePercent,
+                GameActions.CurrentImpactDamagePercent);
+            DrawMultiplierControl(
+                ref overspeedDamagePercent,
+                "overspeed_damage_multiplier",
+                GameActions.SetOverspeedDamagePercent,
+                GameActions.CurrentOverspeedDamagePercent);
+            DrawMultiplierControl(
+                ref wearMultiplierPercent,
+                "wear_multiplier",
+                GameActions.SetEquipmentWearPercent,
+                GameActions.CurrentEquipmentWearPercent);
+            DrawMultiplierControl(
+                ref oilUsePercent,
+                "oil_use_multiplier",
+                GameActions.SetOilUsePercent,
+                GameActions.CurrentOilUsePercent);
+            DrawMultiplierControl(
+                ref fuelConsumptionPercent,
+                "fuel_consumption_multiplier",
+                GameActions.SetFuelConsumptionPercent,
+                GameActions.CurrentFuelConsumptionPercent);
+            GUILayout.Label(Localization.Text("multiplier_description"), labelStyle);
         }
 
         private void DrawQolTab()
@@ -222,16 +312,6 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
                 multiplier => Run(() => GameActions.SetGameSpeed(multiplier)));
             GUILayout.Label(Localization.Text("game_speed_description"), labelStyle);
 
-            GUILayout.Space(7f);
-            GUILayout.Label(Localization.Text("player_teleport"), labelStyle);
-            if (ActionButton(Localization.Text("arm_teleport")))
-            {
-                teleportPending = true;
-                teleportAwaitingRelease = false;
-                open = false;
-                status = Localization.Text("teleport_armed");
-            }
-            GUILayout.Label(Localization.Text("teleport_description"), labelStyle);
         }
 
         private void DrawSpeedButtons(float[] multipliers, Action<float> action)
@@ -245,35 +325,115 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
             GUILayout.EndHorizontal();
         }
 
-        private void DrawAmountAction(ref string amount, string actionKey, Func<string> action)
+        private void DrawAmountActions(
+            ref string amount,
+            string primaryKey,
+            Func<string> primaryAction,
+            string secondaryKey,
+            Func<string> secondaryAction)
         {
             GUILayout.BeginHorizontal();
             amount = GUILayout.TextField(amount, textFieldStyle, GUILayout.Width(140f), GUILayout.Height(23f));
-            if (ActionButton(Localization.Text(actionKey))) Run(action);
+            if (ActionButton(Localization.Text(primaryKey))) Run(primaryAction);
+            if (ActionButton(Localization.Text(secondaryKey))) Run(secondaryAction);
             GUILayout.EndHorizontal();
         }
 
-        private void DrawActionPair(string leftKey, Func<string> leftAction, string rightKey, Func<string> rightAction)
+        private void DrawMultiplierControl(
+            ref string value,
+            string labelKey,
+            Func<float, string> action,
+            Func<string> currentValue)
         {
-            DrawActionPair(leftKey, leftAction, rightKey, rightAction, null, null);
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(Localization.Text(labelKey), labelStyle, GUILayout.Width(185f));
+            value = GUILayout.TextField(value, textFieldStyle, GUILayout.Width(75f), GUILayout.Height(23f));
+            var enteredValue = value;
+            if (ActionButton(Localization.Text("apply"))) Run(() => action(ParseFloat(enteredValue)));
+            GUILayout.EndHorizontal();
+            GUILayout.Label(Localization.Format("current_multiplier", currentValue()), labelStyle);
+        }
+
+        private void DrawResizeGrip()
+        {
+            var gripRect = new Rect(
+                window.width - ResizeGripSize,
+                window.height - ResizeGripSize,
+                ResizeGripSize,
+                ResizeGripSize);
+            GUI.Box(gripRect, string.Empty, resizeGripStyle);
+
+            var currentEvent = Event.current;
+            if (currentEvent.type == EventType.MouseDown
+                && currentEvent.button == 0
+                && gripRect.Contains(currentEvent.mousePosition))
+            {
+                resizingWindow = true;
+                resizeStartMouse = currentEvent.mousePosition;
+                resizeStartSize = new Vector2(window.width, window.height);
+                currentEvent.Use();
+            }
+            else if (resizingWindow && currentEvent.type == EventType.MouseDrag && currentEvent.button == 0)
+            {
+                var delta = currentEvent.mousePosition - resizeStartMouse;
+                window.width = Mathf.Max(MinWindowWidth, resizeStartSize.x + delta.x);
+                window.height = Mathf.Max(MinWindowHeight, resizeStartSize.y + delta.y);
+                currentEvent.Use();
+            }
+            else if (resizingWindow && currentEvent.type == EventType.MouseUp && currentEvent.button == 0)
+            {
+                resizingWindow = false;
+                currentEvent.Use();
+            }
         }
 
         private void DrawActionPair(
-            string leftKey,
+            string leftLabelKey,
+            string leftButtonKey,
             Func<string> leftAction,
-            string rightKey,
+            string rightLabelKey,
+            string rightButtonKey,
             Func<string> rightAction,
-            string leftSuffix,
-            string rightSuffix)
+            string leftSuffix = null,
+            string rightSuffix = null)
         {
             GUILayout.BeginHorizontal();
-            var leftLabel = Localization.Text(leftKey);
-            var rightLabel = Localization.Text(rightKey);
-            if (!string.IsNullOrWhiteSpace(leftSuffix)) leftLabel += ": " + leftSuffix;
-            if (!string.IsNullOrWhiteSpace(rightSuffix)) rightLabel += ": " + rightSuffix;
-            if (ActionButton(leftLabel)) Run(leftAction);
-            if (ActionButton(rightLabel)) Run(rightAction);
+            DrawCompactAction(
+                Localization.Text(leftLabelKey) + FormatSuffix(leftSuffix),
+                Localization.Text(leftButtonKey),
+                leftAction);
+            DrawCompactAction(
+                Localization.Text(rightLabelKey) + FormatSuffix(rightSuffix),
+                Localization.Text(rightButtonKey),
+                rightAction);
             GUILayout.EndHorizontal();
+        }
+
+        private void DrawStatePair(
+            string leftLabel,
+            Func<string> leftAction,
+            bool leftEnabled,
+            string rightLabel,
+            Func<string> rightAction,
+            bool rightEnabled)
+        {
+            GUILayout.BeginHorizontal();
+            DrawCompactAction(leftLabel, leftEnabled ? Localization.Text("state_enabled") : Localization.Text("state_disabled"), leftAction);
+            DrawCompactAction(rightLabel, rightEnabled ? Localization.Text("state_enabled") : Localization.Text("state_disabled"), rightAction);
+            GUILayout.EndHorizontal();
+        }
+
+        private void DrawCompactAction(string label, string buttonText, Func<string> action)
+        {
+            GUILayout.BeginVertical(GUILayout.ExpandWidth(true));
+            GUILayout.Label(label, labelStyle);
+            if (ActionButton(buttonText, 23f)) Run(action);
+            GUILayout.EndVertical();
+        }
+
+        private static string FormatSuffix(string suffix)
+        {
+            return string.IsNullOrWhiteSpace(suffix) ? string.Empty : " (" + suffix + ")";
         }
 
         private bool ActionButton(string text, float height = 25f)
@@ -332,6 +492,15 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
             textFieldStyle.border = new RectOffset(4, 4, 4, 4);
             textFieldStyle.fontSize = 13;
             textFieldStyle.padding = new RectOffset(6, 6, 3, 3);
+
+            closeButtonStyle = new GUIStyle(buttonStyle);
+            closeButtonStyle.fontSize = 13;
+            closeButtonStyle.padding = new RectOffset(0, 0, 0, 0);
+
+            resizeGripStyle = new GUIStyle(GUI.skin.box);
+            resizeGripStyle.normal.background = controlBackground;
+            resizeGripStyle.normal.textColor = new Color(0.70f, 0.64f, 0.52f, 1f);
+            resizeGripStyle.fontSize = 10;
         }
 
         private void ApplyControlStyle(GUIStyle style)

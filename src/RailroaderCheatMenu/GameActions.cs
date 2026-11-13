@@ -19,7 +19,17 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
 {
     internal static class GameActions
     {
-        private static readonly string[] MowLoadIds = { "rr/ballast", "rr/ties", "rr/rails" };
+        private static readonly string[] MowLoadIds =
+        {
+            "rr/ballast",
+            "rr/ties",
+            "rr/rails",
+            "rr/bridge-parts-steel",
+            "rr/concrete",
+            "rr/bridge-parts-wood",
+            "rr/explosives"
+        };
+        private const string RepairPartsLoadId = "rr/repair-parts";
         private static readonly string[] FuelLoadIds = { "rr/coal", "rr/diesel-fuel" };
         private static Character.PlayerCharacterController speedController;
         private static float originalMaxStableMoveSpeed;
@@ -125,6 +135,77 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
             return Localization.Format("refueled_cars", count);
         }
 
+        internal static string FillManifestedSelected()
+        {
+            RequireHost();
+            var car = TrainController.Shared?.SelectedCar;
+            if (car == null) return Localization.Text("no_selected_car");
+
+            var filled = FillManifestedCar(car);
+            return filled == 0
+                ? Localization.Text("no_manifested_cargo")
+                : Localization.Format("filled_manifested_car", car.DisplayName, filled);
+        }
+
+        internal static string FillManifestedAll()
+        {
+            RequireHost();
+            var cars = TrainController.Shared?.Cars;
+            if (cars == null) return Localization.Text("controller_not_ready");
+
+            var carsFilled = 0;
+            var slotsFilled = 0;
+            foreach (var car in cars)
+            {
+                if (car == null || car is DieselLocomotive || car is SteamLocomotive) continue;
+                var filled = FillManifestedCar(car);
+                if (filled == 0) continue;
+                carsFilled++;
+                slotsFilled += filled;
+            }
+            return carsFilled == 0
+                ? Localization.Text("no_manifested_cargo")
+                : Localization.Format("filled_manifested_cars", slotsFilled, carsFilled);
+        }
+
+        internal static string EmptySelectedCargo()
+        {
+            RequireHost();
+            var car = TrainController.Shared?.SelectedCar;
+            if (car == null) return Localization.Text("no_selected_car");
+            if (car is DieselLocomotive || car is SteamLocomotive)
+            {
+                return Localization.Text("selected_not_cargo_car");
+            }
+
+            var emptied = EmptyCargoCar(car);
+            return emptied == 0
+                ? Localization.Text("no_cargo_to_empty")
+                : Localization.Format("emptied_cargo_car", car.DisplayName, emptied);
+        }
+
+        internal static string EmptyAllCargo()
+        {
+            RequireHost();
+            var cars = TrainController.Shared?.Cars;
+            if (cars == null) return Localization.Text("controller_not_ready");
+
+            var carsEmptied = 0;
+            var slotsEmptied = 0;
+            foreach (var car in cars)
+            {
+                if (car == null || car is DieselLocomotive || car is SteamLocomotive) continue;
+                var emptied = EmptyCargoCar(car);
+                if (emptied == 0) continue;
+                carsEmptied++;
+                slotsEmptied += emptied;
+            }
+
+            return carsEmptied == 0
+                ? Localization.Text("no_cargo_to_empty")
+                : Localization.Format("emptied_cargo_cars", slotsEmptied, carsEmptied);
+        }
+
         internal static string OilSelected()
         {
             RequireHost();
@@ -175,6 +256,156 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
                 RuntimePatches.ProtectHighSpeedDamage ? Localization.Text("enabled") : Localization.Text("disabled"));
         }
 
+        internal static string SetHighSpeedDamageThreshold(float mph)
+        {
+            RequireHost();
+            if (!RuntimePatches.IsInstalled) return Localization.Text("runtime_patch_missing");
+
+            mph = Math.Max(1f, Math.Min(200f, mph));
+            RuntimePatches.SetHighSpeedDamageThreshold(mph);
+            return Localization.Format(
+                "speed_threshold_set",
+                mph.ToString("0.##", CultureInfo.InvariantCulture));
+        }
+
+        internal static string CurrentHighSpeedDamageThreshold()
+        {
+            return RuntimePatches.HighSpeedDamageThresholdMph.ToString("0.##", CultureInfo.InvariantCulture);
+        }
+
+        internal static string ToggleEquipmentWear()
+        {
+            RequireHost();
+            var storage = StateManager.Shared.Storage;
+            if (storage == null) return Localization.Text("unavailable");
+
+            var enabled = !storage.WearFeature;
+            storage.WearFeature = enabled;
+            // The game normally mirrors this save-backed setting through a state
+            // observer. Assign it directly as well so the current session changes
+            // immediately even if the observer has not fired yet.
+            Car.WearFeature = enabled;
+            Car.OilFeature = enabled && storage.OilFeature;
+            return Localization.Format(
+                "equipment_wear_toggle_status",
+                enabled ? Localization.Text("enabled") : Localization.Text("disabled"));
+        }
+
+        internal static string ToggleHotboxesAndOiling()
+        {
+            RequireHost();
+            var storage = StateManager.Shared.Storage;
+            if (storage == null) return Localization.Text("unavailable");
+
+            var enabled = !storage.OilFeature;
+            storage.OilFeature = enabled;
+            // OilFeature is intentionally independent in the stock game, but
+            // Car.EnableOiling also respects WearFeature through the host state.
+            Car.OilFeature = enabled && Car.WearFeature;
+            return Localization.Format(
+                "oil_feature_toggle_status",
+                Car.OilFeature ? Localization.Text("enabled") : Localization.Text("disabled"));
+        }
+
+        internal static string EquipmentWearStatus()
+        {
+            var storage = StateManager.Shared?.Storage;
+            return storage == null
+                ? Localization.Text("unavailable")
+                : (storage.WearFeature ? Localization.Text("enabled") : Localization.Text("disabled"));
+        }
+
+        internal static string HotboxesAndOilingStatus()
+        {
+            var storage = StateManager.Shared?.Storage;
+            return storage == null
+                ? Localization.Text("unavailable")
+                : (storage.WearFeature && storage.OilFeature
+                    ? Localization.Text("enabled")
+                    : Localization.Text("disabled"));
+        }
+
+        internal static string SetImpactDamagePercent(float percent)
+        {
+            RequireHost();
+            if (!RuntimePatches.IsInstalled) return Localization.Text("runtime_patch_missing");
+
+            percent = ClampPercent(percent);
+            RuntimePatches.SetImpactDamageMultiplier(percent / 100f);
+            return Localization.Format("impact_damage_set", FormatPercent(percent));
+        }
+
+        internal static string SetOverspeedDamagePercent(float percent)
+        {
+            RequireHost();
+            if (!RuntimePatches.IsInstalled) return Localization.Text("runtime_patch_missing");
+
+            percent = ClampPercent(percent);
+            RuntimePatches.SetOverspeedDamageMultiplier(percent / 100f);
+            return Localization.Format("overspeed_damage_set", FormatPercent(percent));
+        }
+
+        internal static string SetFuelConsumptionPercent(float percent)
+        {
+            RequireHost();
+            if (!RuntimePatches.IsInstalled) return Localization.Text("runtime_patch_missing");
+
+            percent = ClampPercent(percent);
+            RuntimePatches.SetFuelConsumptionMultiplier(percent / 100f);
+            return Localization.Format("fuel_consumption_set", FormatPercent(percent));
+        }
+
+        internal static string SetEquipmentWearPercent(float percent)
+        {
+            RequireHost();
+            var storage = StateManager.Shared.Storage;
+            if (storage == null) return Localization.Text("unavailable");
+
+            percent = ClampPercent(percent);
+            storage.WearMultiplier = percent / 100f;
+            Car.WearMultiplier = percent / 100f;
+            return Localization.Format("wear_multiplier_set", FormatPercent(percent));
+        }
+
+        internal static string SetOilUsePercent(float percent)
+        {
+            RequireHost();
+            var storage = StateManager.Shared.Storage;
+            if (storage == null) return Localization.Text("unavailable");
+
+            percent = ClampPercent(percent);
+            storage.OilUseMultiplier = percent / 100f;
+            Car.OilUseMultiplier = percent / 100f;
+            return Localization.Format("oil_use_multiplier_set", FormatPercent(percent));
+        }
+
+        internal static string CurrentImpactDamagePercent()
+        {
+            return FormatPercent(RuntimePatches.ImpactDamageMultiplier * 100f);
+        }
+
+        internal static string CurrentOverspeedDamagePercent()
+        {
+            return FormatPercent(RuntimePatches.OverspeedDamageMultiplier * 100f);
+        }
+
+        internal static string CurrentFuelConsumptionPercent()
+        {
+            return FormatPercent(RuntimePatches.FuelConsumptionMultiplier * 100f);
+        }
+
+        internal static string CurrentEquipmentWearPercent()
+        {
+            var storage = StateManager.Shared?.Storage;
+            return storage == null ? Localization.Text("unavailable") : FormatPercent(storage.WearMultiplier * 100f);
+        }
+
+        internal static string CurrentOilUsePercent()
+        {
+            var storage = StateManager.Shared?.Storage;
+            return storage == null ? Localization.Text("unavailable") : FormatPercent(storage.OilUseMultiplier * 100f);
+        }
+
         internal static string SetPlayerSpeedMultiplier(float multiplier)
         {
             RequireHost();
@@ -204,24 +435,6 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
 
             UnityEngine.Time.timeScale = multiplier;
             return Localization.Format("game_speed_set", multiplier.ToString("0.##", CultureInfo.InvariantCulture));
-        }
-
-        internal static string TeleportPlayerToCursor()
-        {
-            RequireHost();
-            var selector = CameraSelector.shared;
-            if (selector == null || selector.character == null) return Localization.Text("player_not_ready");
-
-            var method = typeof(CameraSelector).GetMethod(
-                "TeleportToMouse",
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-                null,
-                Type.EmptyTypes,
-                null);
-            if (method == null) throw new MissingMethodException(Localization.Text("teleport_method_missing"));
-
-            method.Invoke(selector, null);
-            return Localization.Text("teleport_requested");
         }
 
         internal static void ResetSessionOverrides()
@@ -270,7 +483,7 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
             var tracker = ReputationTracker.Shared;
             return tracker == null
                 ? Localization.Text("unavailable")
-                : (tracker.Reputation * 100f).ToString("0.##", CultureInfo.InvariantCulture) + "%";
+                : (tracker.Reputation * 100f).ToString("0.##", CultureInfo.InvariantCulture);
         }
 
         internal static string SetReputationPercent(float percent)
@@ -329,6 +542,16 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
 
         internal static string RestockMowMaterials(float quantity)
         {
+            return SetMowMaterials(quantity, false);
+        }
+
+        internal static string ClearMowMaterials()
+        {
+            return SetMowMaterials(0f, true);
+        }
+
+        private static string SetMowMaterials(float quantity, bool clearing)
+        {
             RequireHost();
             if (quantity < 0f) quantity = 0f;
             var loads = MowLoadIds.Select(CarLoadLibrary.GetLoad).Where(load => load != null).ToArray();
@@ -366,15 +589,26 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
 
             return yards == 0
                 ? Localization.Text("no_mow_yards")
-                : Localization.Format("restocked", writes, yards);
+                : Localization.Format(clearing ? "mow_cleared" : "restocked", writes, yards);
         }
 
         internal static string RestockFuelSupplies(float quantity)
         {
+            return SetFuelSupplies(quantity, false);
+        }
+
+        internal static string ClearFuelSupplies()
+        {
+            return SetFuelSupplies(0f, true);
+        }
+
+        private static string SetFuelSupplies(float quantity, bool clearing)
+        {
             RequireHost();
             if (quantity < 0f) quantity = 0f;
-            var loads = FuelLoadIds.Select(CarLoadLibrary.GetLoad).Where(load => load != null).ToArray();
-            if (loads.Length == 0) return Localization.Text("loads_unavailable");
+            var fuelLoads = FuelLoadIds.Select(CarLoadLibrary.GetLoad).Where(load => load != null).ToArray();
+            var repairLoad = CarLoadLibrary.GetLoad(RepairPartsLoadId);
+            if (fuelLoads.Length == 0 && repairLoad == null) return Localization.Text("loads_unavailable");
 
             var ops = OpsController.Shared;
             if (ops == null || ops.AllIndustries == null) return Localization.Text("operations_not_ready");
@@ -383,7 +617,10 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
             var writes = 0;
             foreach (var industry in ops.AllIndustries)
             {
-                if (industry == null || !LooksLikeFuelYard(industry)) continue;
+                if (industry == null) continue;
+                var isFuelYard = LooksLikeFuelYard(industry);
+                var isRepairDepot = LooksLikeRepairDepot(industry);
+                if (!isFuelYard && !isRepairDepot) continue;
                 var storage = industry.Storage;
                 if (storage == null) continue;
 
@@ -397,9 +634,17 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
 
                 foreach (var prefix in prefixes)
                 {
-                    foreach (var load in loads)
+                    if (isFuelYard)
                     {
-                        storage.SetStorage(load, quantity, prefix);
+                        foreach (var load in fuelLoads)
+                        {
+                            storage.SetStorage(load, quantity, prefix);
+                            writes++;
+                        }
+                    }
+                    if (isRepairDepot && repairLoad != null)
+                    {
+                        storage.SetStorage(repairLoad, quantity, prefix);
                         writes++;
                     }
                 }
@@ -408,7 +653,7 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
 
             return yards == 0
                 ? Localization.Text("no_fuel_yards")
-                : Localization.Format("fuel_restocked", writes, yards);
+                : Localization.Format(clearing ? "fuel_cleared" : "fuel_restocked", writes, yards);
         }
 
         private static void RepairCar(Car car)
@@ -483,6 +728,46 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
             return filled;
         }
 
+        private static int FillManifestedCar(Car car)
+        {
+            if (car?.Definition?.LoadSlots == null) return 0;
+
+            var filled = 0;
+            for (var slotIndex = 0; slotIndex < car.Definition.LoadSlots.Count; slotIndex++)
+            {
+                var info = CarOpsExtensions.GetLoadInfo(car, slotIndex);
+                if (!info.HasValue || string.IsNullOrWhiteSpace(info.Value.LoadId)) continue;
+
+                var load = CarLoadLibrary.GetLoad(info.Value.LoadId);
+                if (load == null) continue;
+
+                var slot = car.Definition.LoadSlots[slotIndex];
+                if (!LoadSlotExtensions.LoadRequirementsMatch(slot, load)) continue;
+
+                var maximum = LoadSlotExtensions.CalculateMaximumCapacity(slot, load, car);
+                var updated = new CarLoadInfo(info.Value.LoadId, maximum, info.Value.OriginId);
+                CarOpsExtensions.SetLoadInfo(car, slotIndex, updated);
+                filled++;
+            }
+            return filled;
+        }
+
+        private static int EmptyCargoCar(Car car)
+        {
+            if (car?.Definition?.LoadSlots == null) return 0;
+
+            var emptied = 0;
+            for (var slotIndex = 0; slotIndex < car.Definition.LoadSlots.Count; slotIndex++)
+            {
+                var info = CarOpsExtensions.GetLoadInfo(car, slotIndex);
+                if (!info.HasValue) continue;
+
+                CarOpsExtensions.SetLoadInfo(car, slotIndex, new Nullable<CarLoadInfo>());
+                emptied++;
+            }
+            return emptied;
+        }
+
         private static bool LooksLikeMowYard(Industry industry)
         {
             var text = ((industry.DisplayName ?? string.Empty) + " " + industry.EntityReference).ToLowerInvariant();
@@ -511,6 +796,22 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
             return false;
         }
 
+        private static bool LooksLikeRepairDepot(Industry industry)
+        {
+            var text = ((industry.DisplayName ?? string.Empty) + " " + industry.EntityReference).ToLowerInvariant();
+            if (text.Contains("engine service") || text.Contains("locomotive works")
+                || text.Contains("roundhouse") || text.Contains("repair")) return true;
+
+            foreach (var component in industry.Components ?? new List<IndustryComponent>())
+            {
+                var componentText = ((component.DisplayName ?? string.Empty) + " "
+                    + component.Identifier + " " + component.GetType().Name).ToLowerInvariant();
+                if (componentText.Contains("repair") || componentText.Contains("rep-parts")
+                    || componentText.Contains("service")) return true;
+            }
+            return false;
+        }
+
         private static void RequireHost()
         {
             var state = StateManager.Shared;
@@ -530,6 +831,16 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
                 "Manual Adjustment",
                 0,
                 false);
+        }
+
+        private static float ClampPercent(float percent)
+        {
+            return Math.Max(0f, Math.Min(500f, percent));
+        }
+
+        private static string FormatPercent(float percent)
+        {
+            return percent.ToString("0.##", CultureInfo.InvariantCulture) + "%";
         }
 
         private static string InvokeMowSetCondition(float condition, float days, string group)
@@ -587,6 +898,7 @@ namespace CAG.Sylvrwynd.RailroaderCheatMenu
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             return property?.GetValue(component, null) as string;
         }
+
     }
 }
 

@@ -1,0 +1,18 @@
+{
+  "identifier": "cag-sylvrwynd/railroader-cheat-menu",
+  "version": "0.2.2",
+  "name": "Railroader Cheat / Debug Menu",
+  "author": "CAG - Sylvrwynd",
+  "license": "MIT",
+  "scope": "optional",
+  "description": "An open-source host-only debug menu for Railroader 0.6.x Experimental.",
+  "dependencies": {
+    "required": [
+      "rr/game ^0.6.2"
+    ]
+  },
+  "assemblies": [
+    "RailroaderCheatMenu.dll"
+  ]
+}
+
